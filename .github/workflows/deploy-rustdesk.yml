@@ -14,6 +14,11 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  TG_VERSION: '0.91.3'
+  TF_VERSION: '1.9.0'
+  WORKING_DIR: 'infra/live/dev/rustdesk'
+
 jobs:
   plan:
     name: Terragrunt Plan
@@ -33,33 +38,31 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '1.9.0'
+          terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Install Terragrunt
-        run: |
-          TERRAGRUNT_VERSION="0.91.3"
-          curl -Lo terragrunt https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64
-          chmod +x terragrunt
-          sudo mv terragrunt /usr/local/bin/
-          terragrunt --version
+        uses: gruntwork-io/terragrunt-action@v3
+        with:
+          tg_version: ${{ env.TG_VERSION }}
+          tf_path: 'terraform'
 
       - name: Terragrunt Format Check
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: terragrunt hclfmt --terragrunt-check --terragrunt-non-interactive
         continue-on-error: true
 
       - name: Terragrunt Init
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: terragrunt init --terragrunt-non-interactive
 
       - name: Terragrunt Validate
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: terragrunt validate --terragrunt-non-interactive
 
       - name: Terragrunt Plan
         id: plan
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: |
           set +e
           terragrunt plan --terragrunt-non-interactive -out=plan.tfplan -detailed-exitcode
@@ -71,8 +74,10 @@ jobs:
           # Generate human-readable plan
           terragrunt show plan.tfplan > plan.txt
           
-          # Exit with original code
-          exit $PLAN_EXIT_CODE
+          # Exit with original code (0=no changes, 1=error, 2=changes)
+          if [ $PLAN_EXIT_CODE -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Upload Plan Artifacts
         if: always()
@@ -80,8 +85,8 @@ jobs:
         with:
           name: terragrunt-plan-${{ github.sha }}
           path: |
-            infra/live/dev/rustdesk/plan.tfplan
-            infra/live/dev/rustdesk/plan.txt
+            ${{ env.WORKING_DIR }}/plan.tfplan
+            ${{ env.WORKING_DIR }}/plan.txt
           retention-days: 30
 
       - name: Comment PR with Plan
@@ -90,7 +95,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const planPath = 'infra/live/dev/rustdesk/plan.txt';
+            const planPath = '${{ env.WORKING_DIR }}/plan.txt';
             let plan = 'Unable to read plan output';
             
             try {
@@ -143,29 +148,27 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '1.9.0'
+          terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Install Terragrunt
-        run: |
-          TERRAGRUNT_VERSION="0.91.3"
-          curl -Lo terragrunt https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64
-          chmod +x terragrunt
-          sudo mv terragrunt /usr/local/bin/
-          terragrunt --version
+        uses: gruntwork-io/terragrunt-action@v3
+        with:
+          tg_version: ${{ env.TG_VERSION }}
+          tf_path: 'terraform'
 
       - name: Download Plan Artifact
         uses: actions/download-artifact@v4
         with:
           name: terragrunt-plan-${{ github.sha }}
-          path: infra/live/dev/rustdesk
+          path: ${{ env.WORKING_DIR }}
 
       - name: Terragrunt Init
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: terragrunt init --terragrunt-non-interactive
 
       - name: Terragrunt Apply
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: |
           if [ -f plan.tfplan ]; then
             echo "Applying saved plan..."
@@ -178,7 +181,7 @@ jobs:
       - name: Capture Outputs
         id: output
         if: always()
-        working-directory: infra/live/dev/rustdesk
+        working-directory: ${{ env.WORKING_DIR }}
         run: |
           terragrunt output -json > outputs.json || echo "{}" > outputs.json
           
@@ -188,13 +191,12 @@ jobs:
             echo "server_ip=http://${SERVER_IP}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Upload State and Outputs
+      - name: Upload Outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: terragrunt-state-${{ github.sha }}
-          path: |
-            infra/live/dev/rustdesk/outputs.json
+          name: terragrunt-outputs-${{ github.sha }}
+          path: ${{ env.WORKING_DIR }}/outputs.json
           retention-days: 90
 
       - name: Deployment Summary
@@ -204,5 +206,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Outputs" >> $GITHUB_STEP_SUMMARY
           echo '```json' >> $GITHUB_STEP_SUMMARY
-          cat infra/live/dev/rustdesk/outputs.json >> $GITHUB_STEP_SUMMARY
+          cat ${{ env.WORKING_DIR }}/outputs.json >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
