@@ -8,12 +8,14 @@ on:
     branches: [ main ]
     paths:
       - 'infra/**'
+  workflow_dispatch:
 
 jobs:
   plan:
     name: Terragrunt Plan
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # run on PRs or when pushing to main (so apply can depend on plan)
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     env:
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
       # Optional Terraform variable overrides (set these as repo secrets if you need to override module inputs)
@@ -42,7 +44,18 @@ jobs:
         working-directory: infra/live/dev/rustdesk
         run: |
           terragrunt init --terragrunt-non-interactive
-          terragrunt plan --terragrunt-non-interactive
+          # produce a binary plan (plan.tfplan) and a human-readable plan (plan.txt)
+          terragrunt plan --terragrunt-non-interactive -out=plan.tfplan || true
+          terragrunt plan --terragrunt-non-interactive > plan.txt || true
+
+      - name: Upload plan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terragrunt-plan
+          path: |
+            infra/live/dev/rustdesk/plan.tfplan
+            infra/live/dev/rustdesk/plan.txt
 
   apply:
     name: Terragrunt Apply
@@ -78,3 +91,20 @@ jobs:
         run: |
           terragrunt init --terragrunt-non-interactive
           terragrunt apply --auto-approve --terragrunt-non-interactive
+
+      - name: Save outputs and state
+        if: always()
+        working-directory: infra/live/dev/rustdesk
+        run: |
+          terragrunt output -json > outputs.json || true
+
+      - name: Upload state and outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terragrunt-state-and-outputs
+          path: |
+            infra/live/dev/rustdesk/terraform.tfstate
+            infra/live/dev/rustdesk/terraform.tfstate.backup
+            infra/live/dev/rustdesk/outputs.json
+            infra/live/dev/rustdesk/plan.txt
