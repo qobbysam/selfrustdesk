@@ -17,7 +17,6 @@ provider "digitalocean" {
 
 resource "random_password" "root_password" {
   length           = 16
-  override_characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 }
 
 resource "digitalocean_droplet" "rustdesk" {
