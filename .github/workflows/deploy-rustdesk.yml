@@ -27,17 +27,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: '1.6.0'
 
-        - name: Install Terragrunt and OpenTofu
-          uses: gruntwork-io/terragrunt-action@v3
-          with:
-            tg_version: '0.91.3'
-            # If you want OpenTofu instead of Terraform, set tofu_version. We only need Terragrunt installed here.
+      - name: Install Terragrunt and OpenTofu
+        uses: gruntwork-io/terragrunt-action@v3
+        with:
+          tg_version: '0.91.3'
+          # If you want OpenTofu instead of Terraform, set tofu_version. We only need Terragrunt installed here.
 
       - name: Run Terragrunt Plan
         working-directory: infra/live/dev/rustdesk
@@ -78,11 +77,11 @@ jobs:
         with:
           terraform_version: '1.6.0'
 
-        - name: Install Terragrunt and OpenTofu
-          uses: gruntwork-io/terragrunt-action@v3
-          with:
-            tg_version: '0.91.3'
-            # If you want OpenTofu instead of Terraform, set tofu_version. We only need Terragrunt installed here.
+      - name: Install Terragrunt and OpenTofu
+        uses: gruntwork-io/terragrunt-action@v3
+        with:
+          tg_version: '0.91.3'
+          # If you want OpenTofu instead of Terraform, set tofu_version. We only need Terragrunt installed here.
 
       - name: Terragrunt Apply
         working-directory: infra/live/dev/rustdesk
