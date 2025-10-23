@@ -1,5 +1,5 @@
 terraform {
-  source = "../../modules/rustdesk"
+  source = "../../../modules/rustdesk"
 }
 
 inputs = {
