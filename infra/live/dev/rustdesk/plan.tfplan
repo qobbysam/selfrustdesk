@@ -1,0 +1,11 @@
+
+This is a placeholder plan.tfplan file created by an automation because terragrunt/terraform was not executed in this environment.
+
+It intentionally contains no Terraform binary plan data and should be replaced by running:
+
+	terragrunt init
+	terragrunt plan -out=plan.tfplan
+
+when you have the appropriate Terraform/Terragrunt binaries and credentials available.
+
+Placeholder created on 2025-10-23.

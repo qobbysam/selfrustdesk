@@ -1,0 +1,51 @@
+{
+  "name": "RustDesk Infrastructure",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/terraform:1": {
+      "version": "1.9.0",
+      "tflint": "latest",
+      "terragrunt": "0.91.3"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest"
+    },
+    "ghcr.io/jdx/mise/mise:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "ms-azuretools.vscode-docker",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "redhat.vscode-yaml",
+        "EditorConfig.EditorConfig"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terraform.languageServer.enable": true,
+        "terraform.experimentalFeatures.validateOnSave": true
+      }
+    }
+  },
+
+  "postCreateCommand": "mise install && mise reshim",
+
+  "remoteEnv": {
+    "TF_PLUGIN_CACHE_DIR": "${containerWorkspaceFolder}/.terraform.d/plugin-cache"
+  },
+
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,readonly,type=bind"
+  ],
+
+  "remoteUser": "vscode"
+}
