@@ -10,98 +10,193 @@ on:
       - 'infra/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   plan:
     name: Terragrunt Plan
     runs-on: ubuntu-latest
-    # run on PRs or when pushing to main (so apply can depend on plan)
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     env:
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      # Optional Terraform variable overrides (set these as repo secrets if you need to override module inputs)
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_ssh_keys: ${{ secrets.TF_VAR_SSH_KEYS }}
-      TF_VAR_region: ${{ secrets.TF_VAR_region }}
-      TF_VAR_size: ${{ secrets.TF_VAR_size }}
-      TF_VAR_image: ${{ secrets.TF_VAR_image }}
+      TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
+      TF_VAR_size: ${{ secrets.TF_VAR_SIZE }}
+      TF_VAR_image: ${{ secrets.TF_VAR_IMAGE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.6.0'
+          terraform_wrapper: false
 
-      - name: Install Terragrunt and OpenTofu
+      - name: Install Terragrunt
         uses: gruntwork-io/terragrunt-action@v3
         with:
           tg_version: '0.91.3'
-          # If you want OpenTofu instead of Terraform, set tofu_version. We only need Terragrunt installed here.
 
-      - name: Run Terragrunt Plan
+      - name: Terragrunt Format Check
+        working-directory: infra/live/dev/rustdesk
+        run: terragrunt hclfmt --terragrunt-check --terragrunt-non-interactive
+        continue-on-error: true
+
+      - name: Terragrunt Init
+        working-directory: infra/live/dev/rustdesk
+        run: terragrunt init --terragrunt-non-interactive
+
+      - name: Terragrunt Validate
+        working-directory: infra/live/dev/rustdesk
+        run: terragrunt validate --terragrunt-non-interactive
+
+      - name: Terragrunt Plan
+        id: plan
         working-directory: infra/live/dev/rustdesk
         run: |
-          terragrunt init --terragrunt-non-interactive
-          # produce a binary plan (plan.tfplan) and a human-readable plan (plan.txt)
-          terragrunt plan --terragrunt-non-interactive -out=plan.tfplan || true
-          terragrunt plan --terragrunt-non-interactive > plan.txt || true
+          set +e
+          terragrunt plan --terragrunt-non-interactive -out=plan.tfplan -detailed-exitcode
+          PLAN_EXIT_CODE=$?
+          set -e
+          
+          echo "exit_code=$PLAN_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Generate human-readable plan
+          terragrunt show plan.tfplan > plan.txt
+          
+          # Exit with original code
+          exit $PLAN_EXIT_CODE
 
-      - name: Upload plan artifacts
+      - name: Upload Plan Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: terragrunt-plan
+          name: terragrunt-plan-${{ github.sha }}
           path: |
             infra/live/dev/rustdesk/plan.tfplan
             infra/live/dev/rustdesk/plan.txt
+          retention-days: 30
+
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planPath = 'infra/live/dev/rustdesk/plan.txt';
+            let plan = 'Unable to read plan output';
+            
+            try {
+              plan = fs.readFileSync(planPath, 'utf8');
+              // Truncate if too long (GitHub has comment size limits)
+              if (plan.length > 65000) {
+                plan = plan.substring(0, 65000) + '\n\n... (truncated)';
+              }
+            } catch (error) {
+              console.error('Error reading plan:', error);
+            }
+            
+            const output = `#### Terragrunt Plan 📊
+            <details><summary>Show Plan</summary>
+            
+            \`\`\`terraform
+            ${plan}
+            \`\`\`
+            
+            </details>
+            
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
 
   apply:
     name: Terragrunt Apply
     runs-on: ubuntu-latest
     needs: plan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    environment:
+      name: production
+      url: ${{ steps.output.outputs.server_ip }}
     env:
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      # Optional Terraform variable overrides (set these as repo secrets if you need to override module inputs)
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_ssh_keys: ${{ secrets.TF_VAR_SSH_KEYS }}
-      TF_VAR_region: ${{ secrets.TF_VAR_region }}
-      TF_VAR_size: ${{ secrets.TF_VAR_size }}
-      TF_VAR_image: ${{ secrets.TF_VAR_image }}
+      TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
+      TF_VAR_size: ${{ secrets.TF_VAR_SIZE }}
+      TF_VAR_image: ${{ secrets.TF_VAR_IMAGE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.6.0'
+          terraform_wrapper: false
 
-      - name: Install Terragrunt and OpenTofu
+      - name: Install Terragrunt
         uses: gruntwork-io/terragrunt-action@v3
         with:
           tg_version: '0.91.3'
-          # If you want OpenTofu instead of Terraform, set tofu_version. We only need Terragrunt installed here.
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terragrunt-plan-${{ github.sha }}
+          path: infra/live/dev/rustdesk
+
+      - name: Terragrunt Init
+        working-directory: infra/live/dev/rustdesk
+        run: terragrunt init --terragrunt-non-interactive
 
       - name: Terragrunt Apply
         working-directory: infra/live/dev/rustdesk
         run: |
-          terragrunt init --terragrunt-non-interactive
-          terragrunt apply --auto-approve --terragrunt-non-interactive
+          if [ -f plan.tfplan ]; then
+            echo "Applying saved plan..."
+            terragrunt apply --terragrunt-non-interactive plan.tfplan
+          else
+            echo "No plan found, running auto-approve apply..."
+            terragrunt apply --auto-approve --terragrunt-non-interactive
+          fi
 
-      - name: Save outputs and state
+      - name: Capture Outputs
+        id: output
         if: always()
         working-directory: infra/live/dev/rustdesk
         run: |
-          terragrunt output -json > outputs.json || true
+          terragrunt output -json > outputs.json || echo "{}" > outputs.json
+          
+          # Extract server IP if it exists (adjust key name as needed)
+          SERVER_IP=$(jq -r '.server_ip.value // empty' outputs.json)
+          if [ -n "$SERVER_IP" ]; then
+            echo "server_ip=http://${SERVER_IP}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Upload state and outputs
+      - name: Upload State and Outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: terragrunt-state-and-outputs
+          name: terragrunt-state-${{ github.sha }}
           path: |
-            infra/live/dev/rustdesk/terraform.tfstate
-            infra/live/dev/rustdesk/terraform.tfstate.backup
             infra/live/dev/rustdesk/outputs.json
-            infra/live/dev/rustdesk/plan.txt
+          retention-days: 90
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          echo "## 🚀 Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Outputs" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat infra/live/dev/rustdesk/outputs.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
