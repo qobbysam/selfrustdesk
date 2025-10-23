@@ -40,23 +40,23 @@ jobs:
 
       - name: Terragrunt Format Check
         working-directory: ${{ env.WORKING_DIR }}
-        run: terragrunt hclfmt --terragrunt-check --terragrunt-non-interactive
+        run: terragrunt hclfmt --terragrunt-check --non-interactive
         continue-on-error: true
 
       - name: Terragrunt Init
         working-directory: ${{ env.WORKING_DIR }}
-        run: terragrunt init --terragrunt-non-interactive
+        run: terragrunt init --non-interactive
 
       - name: Terragrunt Validate
         working-directory: ${{ env.WORKING_DIR }}
-        run: terragrunt validate --terragrunt-non-interactive
+        run: terragrunt validate --non-interactive
 
       - name: Terragrunt Plan
         id: plan
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           set +e
-          terragrunt plan --terragrunt-non-interactive -out=plan.tfplan -detailed-exitcode
+          terragrunt plan --non-interactive -out=plan.tfplan -detailed-exitcode
           PLAN_EXIT_CODE=$?
           set -e
           
@@ -149,17 +149,17 @@ jobs:
 
       - name: Terragrunt Init
         working-directory: ${{ env.WORKING_DIR }}
-        run: terragrunt init --terragrunt-non-interactive
+        run: terragrunt init --non-interactive
 
       - name: Terragrunt Apply
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           if [ -f plan.tfplan ]; then
             echo "Applying saved plan..."
-            terragrunt apply --terragrunt-non-interactive plan.tfplan
+            terragrunt apply --non-interactive plan.tfplan
           else
             echo "No plan found, running auto-approve apply..."
-            terragrunt apply --auto-approve --terragrunt-non-interactive
+            terragrunt apply --auto-approve --non-interactive
           fi
 
       - name: Capture Outputs
